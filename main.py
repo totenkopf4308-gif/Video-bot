@@ -10,8 +10,12 @@ from telethon.tl.types import InputPeerUser, MessageMediaWebPage
 
 API_ID = int(os.environ["API_ID"])
 API_HASH = os.environ["API_HASH"]
-BOT_TOKEN = os.environ["BOT_TOKEN"]  # бот-перезаливщик видео (для вас)
-ORDER_BOT_TOKEN = os.environ.get("ORDER_BOT_TOKEN", "").strip()  # бот для заказов
+def clean_token(value):
+    return value.strip().strip("\"'").strip()
+
+
+BOT_TOKEN = clean_token(os.environ["BOT_TOKEN"])  # бот-перезаливщик видео (для вас)
+ORDER_BOT_TOKEN = clean_token(os.environ.get("ORDER_BOT_TOKEN", ""))  # бот для заказов
 ALLOWED = {
     int(x) for x in os.environ.get("ALLOWED_USER_IDS", "").split(",") if x.strip()
 }
@@ -204,10 +208,24 @@ async def run_order_bot():
     await client.run_until_disconnected()
 
 
+async def safe(name, coro):
+    """Ошибка одного бота не должна останавливать второго."""
+    try:
+        await coro
+    except Exception as e:
+        print(f"{name} остановлен: {e!r}", flush=True)
+
+
 async def main():
-    tasks = [run_video_bot()]
+    tasks = [safe("Video bot", run_video_bot())]
     if ORDER_BOT_TOKEN and OWNER_ID:
-        tasks.append(run_order_bot())
+        # Диагностика без показа самого токена
+        print(
+            f"ORDER_BOT_TOKEN: длина {len(ORDER_BOT_TOKEN)}, "
+            f"двоеточие {'есть' if ':' in ORDER_BOT_TOKEN else 'НЕТ'}",
+            flush=True,
+        )
+        tasks.append(safe("Order bot", run_order_bot()))
     elif ORDER_BOT_TOKEN:
         print("ORDER_BOT_TOKEN задан, но нет OWNER_ID или ALLOWED_USER_IDS", flush=True)
     await asyncio.gather(*tasks)
